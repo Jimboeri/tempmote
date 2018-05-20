@@ -18,16 +18,16 @@
 #define GATEWAYID     1
 #define MOTEINO       1
 #define SW_MODEL      11
-#define SW_VERSION    1.2
+#define SW_VERSION    1.3
 
-#define INITIAL_SETUP // uncomment this for an initial setup of a moteino
+//#define INITIAL_SETUP // uncomment this for an initial setup of a moteino
 
 //Match frequency to the hardware version of the radio on your Moteino (uncomment one):
 #define FREQUENCY   RF69_433MHZ
 //#define FREQUENCY   RF69_868MHZ
 //#define FREQUENCY   RF69_915MHZ
 #define ENCRYPTKEY    "TheWildWestHouse" //exactly the same 16 characters/bytes on all nodes!
-//#define IS_RFM69HW    //uncomment only for RFM69HW! Leave out if you have RFM69W!
+#define IS_RFM69HW    //uncomment only for RFM69HW! Leave out if you have RFM69W!
 //#define ENABLE_ATC    //comment out this line to disable AUTO TRANSMISSION CONTROL
 
 #define LED_DEVICE      3
@@ -65,7 +65,7 @@ char radio_encrypt[16];
 //**********************************************************************************************
 
 // device 101 is temperature stored as DHT_DEVICE
-unsigned long report_period = 15000;   //send data every X milliseconds
+unsigned long report_period = 600000;   //send data every X milliseconds
 unsigned long report_period_time;      //seconds since last period
 unsigned long t1 = 0L;
 
@@ -162,7 +162,7 @@ void setup() {
   //Always test your ATC mote in the edge cases in your own environment to ensure ATC will perform as you expect
 #ifdef ENABLE_ATC
   Serial.println("RFM69_ATC Enabled (Auto Transmission Control)\n");
-  radio.enableAutoPower(-40);
+  radio.enableAutoPower(-20);
 #endif
 
   char buff[50];
@@ -213,7 +213,8 @@ void loop() {
 
   if (sleepTimer < millis())
   {
-
+    send_temp();
+    
     downTimer = (report_period / 1000) - 5;
     Serial.print("Going to sleep for ");
     Serial.print(downTimer);
@@ -230,7 +231,7 @@ void loop() {
 
     sleepTimer = millis() + 5000;
     Serial.println("Wake up");
-    send_temp();
+
   }
 
 }
@@ -256,7 +257,7 @@ void process_radio()
   //printThedata(theData);
   requestID = theData.req_ID;
 
-  sendData.nodeID = 1;    // always send to the gateway node
+  //sendData.nodeID = 1;    // always send to the gateway node
 
   if (theData.nodeID = NODEID)  // only if the message is for this node
   {
@@ -271,7 +272,8 @@ void process_radio()
           Serial.print("Temp regular update changed to ");
           Serial.print(theData.float1);
           Serial.println(" seconds");
-          EEPROM.put(PARAM_REPORT_PERIOD, report_period);
+          EEPROM.put(PARAM_REPORT_PERIOD, theData.float1*1000);
+          report_period = theData.float1*1000;
         }
         break;
       case 'Q':   // parameter query
@@ -280,7 +282,7 @@ void process_radio()
           txData(MOTEINO, 'C', report_period / 1000, 0, 0, 0, 0);
 
           Serial.print("Query - report period is ");
-          Serial.print(sendData.float1);
+          Serial.print(report_period / 1000);
           Serial.println(" seconds");
         }
         break;
@@ -324,7 +326,7 @@ void send_temp()
 
   float t = sensors.getTempCByIndex(0);
 
-  txData(DS18B20_DEVICE, 'I', t, 0, 0, 0, 0);
+  txData(DS18B20_DEVICE, 'I', t, readVcc(), 0, 0, 0);
 
 }
 
