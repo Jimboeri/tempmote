@@ -1,3 +1,4 @@
+
 // Sketch to send temp readings to a gateway
 // Copyright Jim West (2017)
 
@@ -9,6 +10,10 @@
 
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <SimpleDHT.h>
+
+// Any credentials needed and not stored in the sketch
+#include "creds.h"
 
 //*********************************************************************************************
 //************ MOTEINO specific settings
@@ -18,7 +23,7 @@
 #define GATEWAYID     1
 #define MOTEINO       1
 #define SW_MODEL      11
-#define SW_VERSION    1.3
+#define SW_VERSION    2.0
 
 //#define INITIAL_SETUP // uncomment this for an initial setup of a moteino
 
@@ -26,13 +31,15 @@
 #define FREQUENCY   RF69_433MHZ
 //#define FREQUENCY   RF69_868MHZ
 //#define FREQUENCY   RF69_915MHZ
-#define ENCRYPTKEY    "TheWildWestHouse" //exactly the same 16 characters/bytes on all nodes!
+//#define ENCRYPTKEY    "abcdefghijklmnop" //exactly the same 16 characters/bytes on all nodes!
 #define IS_RFM69HW    //uncomment only for RFM69HW! Leave out if you have RFM69W!
 //#define ENABLE_ATC    //comment out this line to disable AUTO TRANSMISSION CONTROL
 
 #define LED_DEVICE      3
-#define DS18B20_DEVICE  21
+#define DHT_DEVICE      101
+#define DS18B20_AND_DHT22_DEVICE  22
 #define ONE_WIRE_BUS    4
+#define DHT_PIN         7
 
 #define LED           9 // Moteinos have LEDs on D9
 #define FLASH_SS      8 // and FLASH SS on D8
@@ -85,11 +92,19 @@ unsigned long t1 = 0L;
 int ledStatus = 0;    // initially off
 
 //************************************************************
-// DS18 is device 21
+// DS18B20 is device 21
 // ***********************************************************
 OneWire oneWire(ONE_WIRE_BUS);
 // Pass our oneWire reference to Dallas Temperature.
 DallasTemperature sensors(&oneWire);
+/********************************************************************/
+
+//************************************************************
+// DHT22 is device 101
+// ***********************************************************
+int pinDHT22 = DHT_PIN;
+SimpleDHT22 dht22;
+float humidity, temperature;
 /********************************************************************/
 
 //**********************************
@@ -184,6 +199,7 @@ void setup() {
     EEPROM.put(PARAM_REPORT_PERIOD, report_period); // should only happen on initial setup
     Serial.print("Initial setup of ");
   }
+  //report_period = 10000;
   Serial.print("Delay between reports is ");
   Serial.print(report_period);
   Serial.println(" millseconds");
@@ -196,6 +212,11 @@ void setup() {
   Serial.print("Devices found - ");
   Serial.println(sensors.getDeviceCount());
   Serial.println("Temp sensor initialised");
+
+  //************************************************************
+  //**Setup for DHT
+  //************************************************************
+  //dht.begin();      // Initialise the DHT module
 }
 //************************************************
 // End of Setup
@@ -214,7 +235,7 @@ void loop() {
   if (sleepTimer < millis())
   {
     send_temp();
-    
+
     downTimer = (report_period / 1000) - 5;
     Serial.print("Going to sleep for ");
     Serial.print(downTimer);
@@ -272,8 +293,8 @@ void process_radio()
           Serial.print("Temp regular update changed to ");
           Serial.print(theData.float1);
           Serial.println(" seconds");
-          EEPROM.put(PARAM_REPORT_PERIOD, theData.float1*1000);
-          report_period = theData.float1*1000;
+          EEPROM.put(PARAM_REPORT_PERIOD, theData.float1 * 1000);
+          report_period = theData.float1 * 1000;
         }
         break;
       case 'Q':   // parameter query
@@ -322,11 +343,23 @@ void send_temp()
 {
   sensors.requestTemperatures(); // Tell the DS18B20 to get make a measurement
   Serial.println(sensors.getTempCByIndex(0), 4); // Get that temperature and print it.
-  Serial.println();
 
   float t = sensors.getTempCByIndex(0);
 
-  txData(DS18B20_DEVICE, 'I', t, readVcc(), 0, 0, 0);
+  int err = SimpleDHTErrSuccess;
+  if ((err = dht22.read2(pinDHT22, &temperature, &humidity, NULL)) != SimpleDHTErrSuccess) {
+    Serial.print("Read DHT22 failed, err="); Serial.println(err); delay(2000);
+    return;
+  }
+
+  Serial.print("DHT Data: ");
+  Serial.print((float)temperature); Serial.print(" *C, ");
+  Serial.print((float)humidity); Serial.println(" RH%");
+  Serial.println();
+
+
+  txData(DS18B20_AND_DHT22_DEVICE, 'I', t, readVcc(), temperature, humidity, 0);
+  //txData(DHT_DEVICE, 'I', temperature, humidity, 0, 0, 0);
 
 }
 
